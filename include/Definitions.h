@@ -16,9 +16,9 @@
 #define BLUE_LED 4
 
 // Buttons
-#define BUTTON_UP 27
-#define BUTTON_DOWN 36
-#define BUTTON_LEFT 35
-#define BUTTON_RIGHT 34
+#define BUTTON_UP 36
+#define BUTTON_DOWN 27
+#define BUTTON_LEFT 34
+#define BUTTON_RIGHT 35
 
 #endif

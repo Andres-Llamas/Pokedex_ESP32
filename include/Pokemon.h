@@ -8,14 +8,14 @@ class Pokemon
 {
 private:
 public:
-    const char *name;
-    const char *number;
-    const char *entry;
-    const char *height;
-    const char *weight;
-    const char *category;
-    const char *typeMain;
-    const char *typeSecond;
+    String name;
+    String number;
+    String entry;
+    String entry2; // 2nd line
+    String entry3; // 3rd line
+    String height;
+    String weight;
+    String category;    
     Pokemon(StaticJsonDocument<512> document);
 };
 

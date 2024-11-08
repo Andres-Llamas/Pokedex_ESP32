@@ -10,11 +10,11 @@
 class PokedexManager
 {
 private:
-    static String GetPokedexEntryIndex();
+    static int GetPokedexEntryIndex();
     static StaticJsonDocument<512> jsonDoc; // Here will be stored the JSON pokemon data
 public:
     static Pokemon* pokemon;        
-    static String currentPokedexIndex;    
+    static int currentPokedexIndex;    
     static void InitializePokedex();
     static void OpenPokemonData();
 };

@@ -8,10 +8,12 @@
 #include "PokedexManager.h"
 #include "Definitions.h"
 #include "SDManager.h"
+#include "InputManager.h"
 
 // Variables
 TFT_eSPI tft = TFT_eSPI();
 Audio audio;
+int currentScreenBrightness = 4000;
 
 // Function Declarations
 void InitializeTFTDisplay();
@@ -19,11 +21,15 @@ void SDSuccessMessage();
 void showBMP(const char *filename, int16_t x, int16_t y);
 uint16_t read16(File &f);
 uint32_t read32(File &f);
-void drawSdJpeg(const char *filename, int xpos, int ypos, int sdTryNumer);
+void drawSdJpeg(const char *filename, int x_center, int y_center);
+void drawSdJpegCentered(const char *filename, int x_center, int y_center);
 void jpegRender(int xpos, int ypos);
 void jpegInfo();
 void showTime(uint32_t msTime);
 void DrawPokedexEntryScreen();
+void RefreshPokedexScreen();
+void SetAudioToPlay(const char *filename);
+void drawTextInBox(String text, int x, int y, int box_width, int box_height);
 
 void setup()
 {
@@ -35,21 +41,154 @@ void setup()
 	pinMode(BUTTON_LEFT, INPUT);
 	pinMode(BUTTON_RIGHT, INPUT);
 	pinMode(AUDIO_ENABLE_PIN, OUTPUT);
+	pinMode(BLUE_LED, OUTPUT);
 	digitalWrite(AUDIO_ENABLE_PIN, HIGH);
 	audio.setPinout(AUDIO_BCLK, AUDIO_LRC, AUDIO_DIN);
 
 	// Initialization
+	analogWrite(BLUE_LED, 500);
 	InitializeTFTDisplay();
-	bool sdInitializationCode = SDManager::InitializeSD(4);	
-	DrawPokedexEntryScreen();
+	bool sdInitializationCode = SDManager::InitializeSD(4);
 
 	// First Configuration
 	PokedexManager::InitializePokedex();
-	PokedexManager::OpenPokemonData();	
+	PokedexManager::OpenPokemonData();
 
-	//? TO DELETE SOME TIME Begin playing an audio file
+	RefreshPokedexScreen();
+
 	audio.setVolume(5);
-	if (!audio.connecttoFS(SD, "/004 - Kanto - Charmander.wav"))
+}
+
+void loop()
+{
+	audio.loop(); // Keep the audio playing
+	InputManager::ReadInput();
+
+	if (digitalRead(BUTTON_UP))
+	{
+		Serial.print("Up Pressed ");
+		PokedexManager::currentPokedexIndex--; // Moving to previous pokemon
+		RefreshPokedexScreen();
+	}
+	if (digitalRead(BUTTON_DOWN))
+	{
+		Serial.print("down Pressed ");
+		PokedexManager::currentPokedexIndex++; // Moving to next pokemon
+		RefreshPokedexScreen();
+	}
+	if (digitalRead(BUTTON_LEFT))
+	{
+		Serial.print("Left Pressed ");
+		analogWrite(TFT_BL, 10);
+	}
+	if (digitalRead(BUTTON_RIGHT))
+	{
+		Serial.print("Right Pressed ");
+		analogWrite(TFT_BL, 4000);
+	}
+}
+
+void InitializeTFTDisplay()
+{
+	tft.init();
+	tft.setRotation(1);							  // Adjust rotation as needed
+	pinMode(TFT_BL, OUTPUT);					  // Set backlight pin as output
+	analogWrite(TFT_BL, currentScreenBrightness); // Turn on the backlight
+}
+
+//& Draw Pokedex Menus ----------------------------------------------------------------------------------------------------------------------
+
+void RefreshPokedexScreen()
+{
+	DrawPokedexEntryScreen();
+	PokedexManager::OpenPokemonData();
+
+	String audioFileDirection = String("/") + String(PokedexManager::currentPokedexIndex) + "/sound.wav";
+	String imageFileDirection = String("/") + String(PokedexManager::currentPokedexIndex) + "/image.jpg";
+	String mainTipeFileDirection = String("/") + String(PokedexManager::currentPokedexIndex) + "/type1.jpg";
+	String secondTipeFileDirection = String("/") + String(PokedexManager::currentPokedexIndex) + "/type2.jpg";
+	String footPrintFileDirection = String("/") + String(PokedexManager::currentPokedexIndex) + "/footprint.jpg";								
+
+	Serial.println(PokedexManager::pokemon->number);
+	Serial.println(PokedexManager::pokemon->name);
+	Serial.println(PokedexManager::pokemon->category);
+	delay(100);
+	// Drawing on screen
+	tft.setTextColor(TFT_WHITE, TFT_RED);
+	tft.drawString(PokedexManager::pokemon->number, 210, 43, 4);
+	tft.drawString(PokedexManager::pokemon->name, 260, 43, 4);
+	tft.setTextColor(TFT_BLACK, TFT_WHITE);
+	tft.drawString(PokedexManager::pokemon->category, 220, 77, 4);
+	tft.drawString(PokedexManager::pokemon->entry, 63, 233, 2);
+	tft.drawString(PokedexManager::pokemon->entry2, 63, 256, 2);
+	tft.drawString(PokedexManager::pokemon->entry3, 63, 279, 2);
+	tft.drawString("Height", 300, 150, 4);
+	tft.drawString(PokedexManager::pokemon->height, 395, 150, 4);
+	tft.drawString("Weight", 300, 186, 4);
+	tft.drawString(PokedexManager::pokemon->weight, 395, 186, 4);
+
+	drawSdJpegCentered(imageFileDirection.c_str(), 90, 120);
+	drawSdJpegCentered(mainTipeFileDirection.c_str(), 320, 123);
+	try
+	{
+		drawSdJpegCentered(secondTipeFileDirection.c_str(), 390, 123);
+	}
+	catch (const std::exception &e)
+	{
+		Serial.println("No second type");
+	}
+	drawSdJpegCentered(footPrintFileDirection.c_str(), 225, 163);
+	SetAudioToPlay(audioFileDirection.c_str());
+}
+
+void DrawPokedexEntryScreen()
+{
+	drawSdJpeg("/pokedexEntry.jpg", 0, 0);
+}
+
+void drawTextInBox(String text, int x, int y, int box_width, int box_height)
+{
+	int cursor_x = x + 5; // Start with some padding from the box edges
+	int cursor_y = y + 5;
+	int line_height = 20; // Line height (adjust based on font size)
+
+	String line = ""; // Buffer to build each line
+
+	for (int i = 0; i < text.length(); i++)
+	{
+		char c = text[i];
+		line += c; // Add character to the current line
+
+		// Check the width of the current line
+		int line_width = tft.textWidth(line);
+
+		if (line_width >= box_width - 10 || c == '\n')
+		{												 // Wrap if line is too wide or newline character
+			tft.drawString(line, cursor_x, cursor_y, 2); // Draw the current line
+			cursor_y += line_height;					 // Move to the next line
+			line = "";									 // Reset line buffer
+
+			// Check if we're outside the box vertically
+			if (cursor_y > y + box_height - line_height)
+			{
+				break; // Stop if we exceed the box height
+			}
+		}
+	}
+
+	// Draw any remaining text in the line buffer
+	if (line.length() > 0 && cursor_y <= y + box_height - line_height)
+	{
+		tft.drawString(line, cursor_x, cursor_y, 2);
+	}
+}
+
+//? Audio Functions
+
+void SetAudioToPlay(const char *filename)
+{
+	InputManager::canReadInput = false;
+	if (!audio.connecttoFS(SD, filename))
 	{ // Replace with your audio file's name
 		Serial.println("Failed to open file for playback!");
 	}
@@ -59,68 +198,21 @@ void setup()
 	}
 }
 
-void loop()
-{
-	audio.loop(); // Keep the audio playing
-	
-}
-
-void InitializeTFTDisplay()
-{
-	tft.init();
-	tft.setRotation(1);			// Adjust rotation as needed
-	pinMode(TFT_BL, OUTPUT);	// Set backlight pin as output
-	digitalWrite(TFT_BL, HIGH); // Turn on the backlight
-}
-
-void SDSuccessMessage()
-{
-	// Read and display a file from the SD card
-
-	File file = SD.open("/test.txt");
-	if (file)
-	{
-		Serial.println("Printing ");
-		tft.drawString("File Contents:", 50, 100, 2);
-		String line;
-		int y = 120;
-		while (file.available())
-		{
-			line = file.readStringUntil('\n'); // Read a line from the file
-			Serial.println(line);
-			tft.drawString(line, 50, y, 4);
-			y += 20; // Move to the next line on the screen
-		}
-		file.close();
-	}
-	else
-	{
-		tft.drawString("File Open Fail", 50, 100, 2);
-	}
-}
-
-//& Draw Pokedex Menus ----------------------------------------------------------------------------------------------------------------------
-
-void DrawPokedexEntryScreen()
-{
-	drawSdJpeg("/pokedexEntry.jpg", 0, 0, 4);
-}
-
-//? Audio Functions
-
 void audio_eof_mp3(const char *info)
 {
 	Serial.print("End of file reached: ");
 	Serial.println(info);
+	InputManager::canReadInput = true;
 }
 
 //% Image Displayer -----------------------------------------------------------------------------------------------------------------------------------------------
+// Code obtained from https://github.com/Bodmer/TFT_eSPI/blob/master/examples/Generic/ESP32_SDcard_jpeg/ESP32_SDcard_jpeg.ino
 
 // ####################################################################################################
 //  Draw a JPEG on the TFT pulled from SD Card
 // ####################################################################################################
 //  xpos, ypos is top left corner of plotted image
-void drawSdJpeg(const char *filename, int xpos, int ypos, int sdTryNumer)
+void drawSdJpeg(const char *filename, int xpos, int ypos)
 {
 	// Open the named file (the Jpeg decoder library will close it)
 	File jpegFile = SD.open(filename, FILE_READ); // or, file handle reference for SD library
@@ -145,7 +237,7 @@ void drawSdJpeg(const char *filename, int xpos, int ypos, int sdTryNumer)
 	if (decoded)
 	{
 		// print information about the image to the serial port
-		jpegInfo();
+		// jpegInfo();
 		// render the image onto the screen at given coordinates
 		jpegRender(xpos, ypos);
 	}
@@ -153,6 +245,43 @@ void drawSdJpeg(const char *filename, int xpos, int ypos, int sdTryNumer)
 	{
 		Serial.println("Jpeg file format not supported!");
 	}
+}
+
+void drawSdJpegCentered(const char *filename, int x_center, int y_center)
+{
+	// Open the named file (the Jpeg decoder library will close it)
+	File jpegFile = SD.open(filename, FILE_READ);
+	if (!jpegFile)
+	{
+		Serial.print("ERROR: File \"");
+		Serial.print(filename);
+		Serial.println("\" not found!");
+		return;
+	}
+
+	Serial.println("===========================");
+	Serial.print("Drawing file: ");
+	Serial.println(filename);
+	Serial.println("===========================");
+
+	// Decode the JPEG file
+	bool decoded = JpegDec.decodeSdFile(jpegFile);
+	if (decoded)
+	{
+		// Calculate the top-left corner to center the image
+		int img_width = JpegDec.width;
+		int img_height = JpegDec.height;
+		int xpos = x_center - img_width / 2;
+		int ypos = y_center - img_height / 2;
+
+		// Render the image onto the screen at the calculated coordinates
+		jpegRender(xpos, ypos);
+	}
+	else
+	{
+		Serial.println("Jpeg file format not supported!");
+	}
+	jpegFile.close();
 }
 
 // ####################################################################################################
@@ -242,7 +371,7 @@ void jpegRender(int xpos, int ypos)
 
 	tft.setSwapBytes(swapBytes);
 
-	showTime(millis() - drawTime); // These lines are for sketch testing only
+	// showTime(millis() - drawTime); // These lines are for sketch testing only
 }
 
 // ####################################################################################################
